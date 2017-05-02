@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$USER_HOME$/data/Pgm/AndroidStudio/RgIGNrando/RgIGNrando.iml" filepath="$USER_HOME$/data/Pgm/AndroidStudio/RgIGNrando/RgIGNrando.iml" />
+      <module fileurl="file://$USER_HOME$/data/Pgm/AndroidStudio/RgIGNrando/mobile/mobile.iml" filepath="$USER_HOME$/data/Pgm/AndroidStudio/RgIGNrando/mobile/mobile.iml" />
+      <module fileurl="file://$USER_HOME$/data/Pgm/AndroidStudio/RgIGNrando/wear/wear.iml" filepath="$USER_HOME$/data/Pgm/AndroidStudio/RgIGNrando/wear/wear.iml" />
+    </modules>
+  </component>
+</project>

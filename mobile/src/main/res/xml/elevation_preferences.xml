@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    android:title="@string/pref_elevation_title" >
+
+    <PreferenceCategory android:title="@string/pref_elevation_title" >
+        <ListPreference
+            android:defaultValue="0"
+            android:entries="@array/elevation_source_list"
+            android:entryValues="@array/elevation_source_list_values"
+            android:key="ELEVATION_SOURCE"
+            android:summary="@string/elevation_source_type_desc"
+            android:title="@string/elevation_source_type" />
+
+        <fr.rg.ignrando.dialog.PressCompPreference
+            android:defaultValue="0"
+            android:key="ELEVATION_CORRECTION"
+            android:summary="@string/altimeter_correction_desc"
+            android:title="@string/altimeter_correction" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

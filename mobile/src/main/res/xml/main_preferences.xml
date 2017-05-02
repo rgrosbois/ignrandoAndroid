@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+
+    <EditTextPreference
+        android:defaultValue="ry9bshqmzmv1gao9srw610oq"
+        android:key="IGN_DEVELOPMENT_KEY"
+        android:summary="@string/ign_dvp_key_desc"
+        android:title="@string/ign_dvp_key" />
+    
+    <ListPreference
+            android:defaultValue="0"
+            android:entries="@array/elevation_display_list"
+            android:entryValues="@array/elevation_display_list_values"
+            android:key="ELEVATION_DISPLAY_TYPE"
+            android:summary="@string/elevation_display_type_desc"
+            android:title="@string/elevation_display_type" />
+
+</PreferenceScreen>

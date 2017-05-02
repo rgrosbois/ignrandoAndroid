@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">Traces rando</string>
+    <string name="app_longname">Traces rando</string>
+    <string name="action_settings">Paramètres</string>
+    <string name="no_file">Aucun fichier</string>
+    <string name="current_directory">Répertoire</string>
+    <string name="pref_map_title">Type de carte</string>
+    <string name="maptype_summ">Définir le type de carte pour afficher les traces</string>
+    <string name="fullscreen">Plein écran</string>
+    <string name="ign_maptype">IGN rando</string>
+    <string name="standard_maptype">Standard</string>
+    <string name="hybrid_maptype">Hybride</string>
+    <string name="satellite_maptype">Satellite</string>
+    <string name="field_maptype">Relief</string>
+    <string name="none_maptype">Aucune</string>
+    <string name="record_in_progress">Enregistrement en cours&#8230;</string>
+    <string name="new_record">Nouvel enregistrement&#8230;</string>
+    <string name="search_hint">Entrer une adresse</string>
+    <string name="address_menu">Adresse</string>
+    <string name="map_fragment">Carte</string>
+    <string name="stat_fragment">Info</string>
+    <string name="map_frag_desc">Carte IGN/Google</string>
+    <string name="stat_frag_desc">Informations de parcours</string>
+    <string name="delete_kml_path_menu">Enlever une trace KML</string>
+    <string name="pref_elevation_title">Paramètres d\'altitude</string>
+    <string name="elevation_source_type">Capteur d\'altitude</string>
+    <string name="elevation_source_type_desc">Définir le type de capteur pour la mesure d\'altitude.</string>
+    <string name="elevation_display_type">Type d\'altitude</string>
+    <string name="elevation_display_type_desc">Définir le type d\'altitude à afficher dans le fragment d\'information.</string>
+    <string name="altimeter_correction">Compensation depuis l\'altitude réelle</string>
+    <string name="altimeter_correction_desc">Indiquer l\'altitude réelle en mètres</string>
+    <string name="settings">Paramètres</string>
+    <string name="ign_dvp_key_desc">Entrer une clé de developpement IGN valide</string>
+    <string name="ign_dvp_key">Clé de développement IGN</string>
+
+</resources>

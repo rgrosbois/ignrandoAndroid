@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kml_path">#ff0000ff</color> <!-- Bleu transparent -->
+    <color name="record_path">#80FF0033</color> <!-- Rouge foncé -->
+    <color name="actionbar_color">#FF000000</color>
+</resources>

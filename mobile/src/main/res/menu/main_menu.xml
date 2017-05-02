@@ -1,0 +1,53 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+      xmlns:tools="http://schemas.android.com/tools"
+      tools:context="fr.rg.ignrando.MainActivity">
+
+    <item
+        android:id="@+id/info"
+        android:icon="@drawable/info"
+        android:orderInCategory="2"
+        android:showAsAction="ifRoom"
+        android:title="@string/info"/>
+    <item
+        android:id="@+id/fullscreen"
+        android:icon="@drawable/fullscreen"
+        android:orderInCategory="3"
+        android:showAsAction="ifRoom"
+        android:title="@string/fullscreen"/>
+    <item
+        android:id="@+id/search"
+        android:actionViewClass="android.widget.SearchView"
+        android:icon="@android:drawable/ic_menu_search"
+        android:inputType="textPostalAddress"
+        android:orderInCategory="4"
+        android:showAsAction="collapseActionView|ifRoom"
+        android:title="@string/address_menu"/>
+    <item
+        android:id="@+id/deleteKMLPath"
+        android:orderInCategory="5"
+        android:showAsAction="never"
+        android:title="@string/delete_kml_path_menu"/>
+    <item
+        android:id="@+id/preferences"
+        android:orderInCategory="6"
+        android:showAsAction="never"
+        android:title="@string/settings"/>
+
+    <group
+        android:id="@+id/menu_maptype"
+        android:checkableBehavior="single">
+        <item
+            android:id="@+id/ign_maptype"
+            android:title="@string/ign_maptype"/>
+        <item
+            android:id="@+id/hybrid_maptype"
+            android:title="@string/hybrid_maptype"/>
+        <item
+            android:id="@+id/field_maptype"
+            android:title="@string/field_maptype"/>
+        <item
+            android:id="@+id/none_maptype"
+            android:title="@string/none_maptype"/>
+    </group>
+
+</menu>
