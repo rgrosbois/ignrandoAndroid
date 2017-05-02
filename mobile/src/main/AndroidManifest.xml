@@ -39,6 +39,7 @@
             android:value=".MainActivity" />
 
         <service android:name=".GeoLocTrackService" />
+        <service android:name=".PeerService" />
 
         <meta-data
             android:name="com.google.android.maps.v2.API_KEY"

@@ -83,8 +83,8 @@ public class MainActivity extends Activity implements
 
     // Clés du bundle de récupération
     private static final String KML_BUNDLE_KEY = "kml_bundle_key";
-    private static final String LATITUDE_PREF_KEY = "saved_latitude";
-    private static final String LONGITUDE_PREF_KEY = "saved_longitude";
+    public static final String LATITUDE_PREF_KEY = "saved_latitude";
+    public static final String LONGITUDE_PREF_KEY = "saved_longitude";
     private static final String BEARING_PREF_KEY = "saved_bearing";
     private static final String TILT_PREF_KEY = "saved_tilt";
     private static final String ZOOM_PREF_KEY = "saved_zoom";
@@ -101,9 +101,8 @@ public class MainActivity extends Activity implements
     // Menu de recherche
     private MenuItem searchItem;
 
-    // Carte GoogleMap
-    private GoogleMap map = null;
-    private TileOverlay ignOverlay; // surcouche IGN
+    // Surcouche IGN
+    private TileOverlay ignOverlay;
 
     private boolean configurationHasChanged = false;
 
@@ -115,6 +114,16 @@ public class MainActivity extends Activity implements
     private Bitmap kmlTrackStartImg, kmlTrackEndImg, recTrackStartImg,
             recTrackEndImg, interImg; // Images d'extrémités
     private int trackWidth = 3; // largeur de trace (en pixel indépendant)
+
+    // Traitement asynchone d'opérations sur la carte
+    private enum MapOperation {
+        SETUP_MAP_ON_RESUME, SAVE_MAP_INSTANCE, ADD_PATH_TO_MAP, SETUP_MAP_TYPE,
+        GEOLOC_INTERVAL_SELECTED, MOVE_CAMERA_TO_LOC, NONE
+    };
+    MapOperation nextOperation = MapOperation.NONE;
+    boolean cameraWithAnimation = false;
+    int geoLocIntervalle1, geolocIntervalle2;
+    GeoLocation locToMoveTo;
 
     // Association au service de tracking de géolocalisations
     private GeoLocTrackService.MyBinder locBinder = null;
@@ -190,6 +199,10 @@ public class MainActivity extends Activity implements
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Log.d(DEBUG_TAG, "onCreate");
+
+        // Démarrage réseau de pairs
+        startService(new Intent(this, PeerService.class));
 
         // Utilisation d'une barre de progression
         requestWindowFeature(Window.FEATURE_PROGRESS);
@@ -282,6 +295,7 @@ public class MainActivity extends Activity implements
     @Override
     protected void onStart() {
         super.onStart();
+        Log.d(DEBUG_TAG, "onStart");
 
         bindService(new Intent(this, GeoLocTrackService.class), mConnection,
                 Context.BIND_AUTO_CREATE);
@@ -293,8 +307,16 @@ public class MainActivity extends Activity implements
     @Override
     protected void onResume() {
         super.onResume();
+        Log.d(DEBUG_TAG, "onResume");
+
         // Mettre à jour la carte
-        setupMapOnResume();
+        MapFragment mapFragment = (MapFragment) getFragmentManager()
+                .findFragmentByTag(FRAG_GMAP_TAG);
+        if (mapFragment != null) {
+            nextOperation = MapOperation.SETUP_MAP_ON_RESUME;
+            Log.d(DEBUG_TAG, ">>>> getMap setupMapOnResume");
+            mapFragment.getMapAsync(this);
+        }
 
         // Surveiller les nouvelles géolocalisations
         registerReceiver(mUpdateReceiver, new IntentFilter(
@@ -309,23 +331,20 @@ public class MainActivity extends Activity implements
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
 
+        Log.d(DEBUG_TAG, "onSaveInstanceState");
+
         // Données de la trace KML
         if (kmlTrack.b != null) {
             outState.putParcelable(KML_BUNDLE_KEY, kmlTrack.b);
         }
 
-        // Position de la caméra
-        if (map != null) {
-            CameraPosition pos = map.getCameraPosition();
-            SharedPreferences settings = getPreferences(MODE_PRIVATE);
-            SharedPreferences.Editor editor = settings.edit();
-            editor.putFloat(LATITUDE_PREF_KEY, (float) pos.target.latitude);
-            editor.putFloat(LONGITUDE_PREF_KEY, (float) pos.target.longitude);
-            editor.putFloat(BEARING_PREF_KEY, pos.bearing);
-            editor.putFloat(TILT_PREF_KEY, pos.tilt);
-            editor.putFloat(ZOOM_PREF_KEY, pos.zoom);
-            editor.putInt(MAPTYPE_PREF_KEY, map.getMapType());
-            editor.apply(); // Appel asynchrone
+        // Mettre à jour la carte
+        MapFragment mapFragment = (MapFragment) getFragmentManager()
+                .findFragmentByTag(FRAG_GMAP_TAG);
+        if (mapFragment != null) {
+            nextOperation = MapOperation.SAVE_MAP_INSTANCE;
+            Log.d(DEBUG_TAG, ">>>> getMap saveMapInstance");
+            mapFragment.getMapAsync(this);
         }
 
         // Mode immersion
@@ -344,6 +363,9 @@ public class MainActivity extends Activity implements
     @Override
     protected void onPause() {
         super.onPause();
+
+        Log.d(DEBUG_TAG, "onPause");
+
         // surveillance des géolocalisations
         unregisterReceiver(mUpdateReceiver);
     }
@@ -353,6 +375,9 @@ public class MainActivity extends Activity implements
      */
     @Override
     protected void onStop() {
+
+        Log.d(DEBUG_TAG, "onStop");
+
         unbindService(mConnection);
 
         super.onStop();
@@ -363,6 +388,8 @@ public class MainActivity extends Activity implements
      */
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
+        Log.d(DEBUG_TAG, "onCreateOptionsMenu");
+
         // Charger le contenu
         getMenuInflater().inflate(R.menu.main_menu, menu);
 
@@ -400,6 +427,8 @@ public class MainActivity extends Activity implements
      */
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
+        Log.d(DEBUG_TAG, "onOptionsItemSelected");
+
         FragmentTransaction ft;
 
         switch (item.getItemId()) {
@@ -500,6 +529,8 @@ public class MainActivity extends Activity implements
      * @param address
      */
     public void onAddressTyped(final String address) {
+        Log.d(DEBUG_TAG, "onAddressTyped");
+
         // Récupérer la clé IGN
         SharedPreferences settings = PreferenceManager
                 .getDefaultSharedPreferences(this);
@@ -547,6 +578,8 @@ public class MainActivity extends Activity implements
      * @param address
      */
     public void onAddressSelected(final String address) {
+        Log.d(DEBUG_TAG, "onAddressSelected");
+
         // Récupérer la clé IGN
         SharedPreferences settings = PreferenceManager
                 .getDefaultSharedPreferences(this);
@@ -569,7 +602,8 @@ public class MainActivity extends Activity implements
                             getActionBar().setSubtitle(g[0].address);
 
                         // Centrer la carte sur la géolocalisation
-                        moveCamera2Loc(g[0].latitude, g[0].longitude);
+                        nextOperation = MapOperation.MOVE_CAMERA_TO_LOC;
+                        locToMoveTo = g[0];
 
                         // Remettre en icône l'action de la barre de recherche
                         if (searchItem != null)
@@ -589,6 +623,8 @@ public class MainActivity extends Activity implements
      */
     @Override
     public void onKMLFileSelected(final String fileName) {
+        Log.d(DEBUG_TAG, "onKMLFileSelected");
+
         // indicateur de progression
         setProgressBarVisibility(true);
 
@@ -622,6 +658,8 @@ public class MainActivity extends Activity implements
      */
     @Override
     public void deleteKMLFile(String nom) {
+        Log.d(DEBUG_TAG, "deleteKMLFile");
+
         File file = new File(nom);
         file.delete();
 
@@ -648,6 +686,8 @@ public class MainActivity extends Activity implements
      */
     @Override
     public void renameKMLFile(String ancienNom, String nouveauNom) {
+        Log.d(DEBUG_TAG, "renameKMLFile");
+
         File file = new File(ancienNom);
         file.renameTo(new File(nouveauNom));
 
@@ -673,10 +713,13 @@ public class MainActivity extends Activity implements
      * @return
      */
     private MapFragment getMapFragment() {
+        Log.d(DEBUG_TAG, "getMapFragment");
+
         MapFragment f = (MapFragment) getFragmentManager().findFragmentByTag(FRAG_GMAP_TAG);
         if (f == null) {
-            // Dernière position de la caméra
-            SharedPreferences settings = getPreferences(MODE_PRIVATE);
+            // Nouveau fragment, charger la dernière configuration de la caméra
+            //SharedPreferences settings = getPreferences(MODE_PRIVATE);
+            SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
             float latitude = settings.getFloat(LATITUDE_PREF_KEY, 45.145f);
             float longitude = settings.getFloat(LONGITUDE_PREF_KEY, 5.72f);
             float bearing = settings.getFloat(BEARING_PREF_KEY, 0);
@@ -693,8 +736,6 @@ public class MainActivity extends Activity implements
                     .zoomControlsEnabled(false).compassEnabled(true);
             f = MapFragment.newInstance(options);
         }
-        // Surveillance asynchrone de la création de la carte
-        f.getMapAsync(this);
 
         return (MapFragment) f;
     }
@@ -733,6 +774,8 @@ public class MainActivity extends Activity implements
      */
     private void drawTrackOnMap(Track t, int color, GoogleMap mMap,
                                 Bitmap depImg, Bitmap arrImg) {
+        Log.d(DEBUG_TAG, "drawTrackOnMap");
+
 
         // Effacer l'éventuelle sous-trace
         if (t.plSubTrack != null) {
@@ -840,6 +883,8 @@ public class MainActivity extends Activity implements
      * @param animateCamera Animer la caméra sur la carte
      */
     private void addPathToFragments(boolean isKML, boolean animateCamera) {
+        Log.d(DEBUG_TAG, "addPathToFragments");
+
         // Récupérer les données de la bonne trace
         Bundle b;
         if (isKML) {
@@ -861,98 +906,11 @@ public class MainActivity extends Activity implements
         if (gmf == null) { // Pas de fragment
             return;
         }
-        if (map == null) { // La carte n'est pas encore créée
-            return;
-        }
-        if (isKML) { // Trace KML
-            drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path), map,
-                    kmlTrackStartImg, kmlTrackEndImg);
-            trackOnMapisKML = true;
-        } else { // Trace d'enregistrement
-            drawTrackOnMap(recordTrack, getResources().getColor(R.color.record_path),
-                    map, recTrackStartImg, recTrackEndImg);
-            trackOnMapisKML = false;
-        }
-
-        if (b != null && animateCamera) { // Animation de la caméra
-            double latMin = b.getDouble(KMLReader.LATMIN_KEY);
-            double latMax = b.getDouble(KMLReader.LATMAX_KEY);
-            double longMin = b.getDouble(KMLReader.LONGMIN_KEY);
-            double longMax = b.getDouble(KMLReader.LONGMAX_KEY);
-            if (latMin == latMax && longMin == longMax) {
-                // La trace ne contient qu'une position ou les positions
-                // sont alignées (verticalement ou horizontalement)
-                moveCamera2Loc(latMin, longMin);
-            } else {
-                moveCamera2Area(latMin, latMax, longMin, longMax);
-            }
-        }
-    }
-
-    /**
-     * Déplacer la caméra de manière à afficher une zone spécifique sur la carte.
-     *
-     * @param latMin  Latitude minimale
-     * @param latMax  Latitude maximale
-     * @param longMin Longitude minimale
-     * @param longMax Longitude maximale
-     */
-    private void moveCamera2Area(double latMin, double latMax, double longMin,
-                                 double longMax) {
-        MapFragment gmf = (MapFragment) getFragmentManager().findFragmentByTag(
-                FRAG_GMAP_TAG);
-        if (gmf == null) { // Le fragment n'existe pas
-            return;
-        }
-
-        if (map == null) {
-            return; // La carte n'est pas encore créée
-        }
-
-        double deltaLat = latMax - latMin;
-        double deltaLong = longMax - longMin;
-        if (deltaLat * deltaLong == 0) {
-            float zoom = Math.max(map.getCameraPosition().zoom, 17);
-            // 1 seule position ou
-            // toutes les positions sont sur une même latitude ou longitude:
-            // placer la position au centre tout en conservant le niveau de zoom
-            map.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latMin,
-                    longMin), zoom));
-        } else { // déplacer la caméra et modifier le niveau de zoom pour afficher
-            // l'intégralité de la trace
-            DisplayMetrics metrics = new DisplayMetrics();
-            ((WindowManager) getSystemService(Context.WINDOW_SERVICE))
-                    .getDefaultDisplay().getMetrics(metrics);
-            int width = metrics.widthPixels;
-            int height = metrics.heightPixels;
-
-            map.animateCamera(CameraUpdateFactory.newLatLngBounds(new LatLngBounds(
-                            new LatLng(latMin, longMin), new LatLng(latMax, longMax)), width,
-                    height * 3 / 4, 50));
-        }
-
-    }
-
-    /**
-     * Déplacer la caméra de manière à placer la géolocalisation spécifiée au
-     * centre de la carte.
-     *
-     * @param latitude  Latitude de la géolocalisation
-     * @param longitude Longitude de la géolocalisation
-     */
-    private void moveCamera2Loc(double latitude, double longitude) {
-        MapFragment gmf = (MapFragment) getFragmentManager().findFragmentByTag(
-                FRAG_GMAP_TAG);
-        if (gmf == null) { // Le fragment n'existe pas
-            return;
-        }
-        if (map == null) {
-            return; // La carte n'est pas encore créée
-        }
-
-        float zoom = Math.max(map.getCameraPosition().zoom, 17);
-        map.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latitude,
-                longitude), zoom));
+        nextOperation = MapOperation.ADD_PATH_TO_MAP;
+        trackOnMapisKML = isKML;
+        cameraWithAnimation = animateCamera;
+        Log.d(DEBUG_TAG, ">>>> getMap addPathToMap");
+        gmf.getMapAsync(this);
 
     }
 
@@ -963,82 +921,26 @@ public class MainActivity extends Activity implements
      * @param mapTypeNum
      */
     private void handleMapTypeSelection(MenuItem item, int mapTypeNum) {
+        Log.d(DEBUG_TAG, "handleMapTypeSelection");
+
         if (!item.isChecked()) {
-            setupMapType(mapTypeNum);
-            item.setChecked(true);
             // Sauvegarder la préférence
             SharedPreferences.Editor editor = PreferenceManager
                     .getDefaultSharedPreferences(this).edit();
-            editor.putString("pref_maptype_choices", "" + mapTypeNum);
+            editor.putInt(MAPTYPE_PREF_KEY, mapTypeNum);
             editor.apply(); // Appel asynchrone
-        }
-    }
 
-    /**
-     * Afficher le type de carte désiré
-     *
-     * @param val
-     */
-    private void setupMapType(int val) {
-        MapFragment gmf = (MapFragment) getFragmentManager().findFragmentByTag(
-                FRAG_GMAP_TAG);
-        if (gmf != null) {
-            if (map == null) {
-                return;
-            }
-            switch (val) {
-                case 0: // IGN
-                    map.setMapType(GoogleMap.MAP_TYPE_NONE);
-                    addIGNOverlay();
-                    break;
-                case 1: // Normale
-                    removeIGNOverlay();
-                    map.setMapType(GoogleMap.MAP_TYPE_NORMAL);
-                    break;
-                case 2: // Hybride
-                    removeIGNOverlay();
-                    map.setMapType(GoogleMap.MAP_TYPE_HYBRID);
-                    break;
-                case 3: // Satellite
-                    removeIGNOverlay();
-                    map.setMapType(GoogleMap.MAP_TYPE_SATELLITE);
-                    break;
-                case 4: // Terrain
-                    removeIGNOverlay();
-                    map.setMapType(GoogleMap.MAP_TYPE_TERRAIN);
-                    break;
-                case 5: // Aucune
-                    removeIGNOverlay();
-                    map.setMapType(GoogleMap.MAP_TYPE_NONE);
-                    break;
+            MapFragment gmf = (MapFragment) getFragmentManager().findFragmentByTag(
+                    FRAG_GMAP_TAG);
+            if (gmf != null) {
+                // Redessiner la carte
+                nextOperation = MapOperation.SETUP_MAP_TYPE;
+                Log.d(DEBUG_TAG, ">>>> getMap setupMapType " + mapTypeNum);
+                gmf.getMapAsync(this);
             }
 
-            // Enregistrer le nouveau type de carte
-            SharedPreferences prefs = PreferenceManager
-                    .getDefaultSharedPreferences(MainActivity.this);
-            if (val != prefs.getInt(MAPTYPE_PREF_KEY, 0)) {
-                SharedPreferences.Editor editor = prefs.edit();
-                editor.putInt(MAPTYPE_PREF_KEY, val);
-                editor.apply();
-            }
-        }
-    }
 
-    /**
-     * Ajouter la surcouche carte IGN.
-     */
-    private void addIGNOverlay() {
-        MapFragment mapFragment = (MapFragment) getFragmentManager()
-                .findFragmentByTag(FRAG_GMAP_TAG);
-        if (mapFragment != null) {
-            if (map != null) {
-                if (ignOverlay != null) {
-                    ignOverlay.remove();
-                }
-                ignOverlay = map.addTileOverlay(new TileOverlayOptions()
-                        .tileProvider(new IGNTileProvider(getApplicationContext()))
-                        .fadeIn(true).zIndex(0.5f));
-            }
+            item.setChecked(true);
         }
     }
 
@@ -1046,6 +948,8 @@ public class MainActivity extends Activity implements
      * Enlever la surcouche IGN
      */
     private void removeIGNOverlay() {
+        Log.d(DEBUG_TAG, "removeIGNOverlay");
+
         if (ignOverlay != null) {
             ignOverlay.remove();
         }
@@ -1057,6 +961,8 @@ public class MainActivity extends Activity implements
      */
     @TargetApi(Build.VERSION_CODES.KITKAT)
     private void hideUiDecoration() {
+        Log.d(DEBUG_TAG, "hideUiDecoration");
+
         if (Build.VERSION.SDK_INT < 16)
             return;
 
@@ -1077,6 +983,8 @@ public class MainActivity extends Activity implements
      */
     @Override
     public void onMapLongClick(LatLng point) {
+        Log.d(DEBUG_TAG, "onMapLongClick");
+
         if (isConnectedToGeoLocService) {
             if (locBinder.isRecording()) { // Déjà en cours
                 RecordDialog.newInstance(true).show(getFragmentManager(),
@@ -1095,6 +1003,8 @@ public class MainActivity extends Activity implements
      * Démarrer un enregistrement GPS.
      */
     public void startRecord() {
+        Log.d(DEBUG_TAG, "startRecord");
+
         if (isConnectedToGeoLocService && canAccessFineLocation) {
             GeoLocTrackService locService = locBinder.getService();
             if (locService != null) {
@@ -1108,6 +1018,8 @@ public class MainActivity extends Activity implements
      * Annuler l'enregistrement.
      */
     public void cancelRecord() {
+        Log.d(DEBUG_TAG, "cancelRecord");
+
         if (isConnectedToGeoLocService) {
             GeoLocTrackService locService = locBinder.getService();
             if (locService != null) {
@@ -1124,6 +1036,8 @@ public class MainActivity extends Activity implements
      * Stopper un enregistrement GPS
      */
     public void stopRecord() {
+        Log.d(DEBUG_TAG, "stopRecord");
+
         if (isConnectedToGeoLocService) {
             GeoLocTrackService locService = locBinder.getService();
             if (locService != null) {
@@ -1140,6 +1054,8 @@ public class MainActivity extends Activity implements
      * Indiquer la tâche courante comme sous-titre de l'application
      */
     private void updateSubtitle() {
+        Log.d(DEBUG_TAG, "updateSubtitle");
+
         if (isConnectedToGeoLocService && locBinder.isRecording()) {
             // Un enregistrement est en cours
             Bundle b = locBinder.getRecordData();
@@ -1164,105 +1080,6 @@ public class MainActivity extends Activity implements
     }
 
     /**
-     * Terminer la configuration de la carte lorsque l'activité repasse au premier
-     * plan:
-     * <ul>
-     * <li>Type de carte</li>
-     * <li>Format des bulles d'information</li>
-     * <li>Clic long</li>
-     * <li>Affichage de la position courante</li>
-     * <li>Mise à jour de l'affichage des traces.</li>
-     * </ul>
-     */
-    private void setupMapOnResume() {
-        // Récupérer la référence du fragment de carte
-        MapFragment mapFragment = (MapFragment) getFragmentManager()
-                .findFragmentByTag(FRAG_GMAP_TAG);
-        if (mapFragment == null) {
-            return;
-        }
-
-        // Récupérer la référence de la carte
-        if (map == null) {
-            return;
-        }
-
-        // Modifier si nécessaire le type de carte
-        SharedPreferences prefs = PreferenceManager
-                .getDefaultSharedPreferences(MainActivity.this);
-        setupMapType(prefs.getInt(MAPTYPE_PREF_KEY, 0));
-
-        // Format des bulles d'information de position spécifiques
-        // sur une trace.
-        map.setInfoWindowAdapter(new InfoWindowAdapter() {
-
-            @Override
-            public View getInfoWindow(Marker marker) {
-                return null;
-            }
-
-            @Override
-            public View getInfoContents(Marker marker) {
-                View v = getLayoutInflater().inflate(R.layout.infowindow, null);
-
-                TextView tvTitle = (TextView) v.findViewById(R.id.iw_title);
-                tvTitle.setText(marker.getTitle());
-
-                String info[] = marker.getSnippet().split("/");
-
-                // Date
-                TextView tvDate = (TextView) v.findViewById(R.id.iw_date);
-                Date date = new Date(Long.parseLong(info[0]) * 1000);
-                DateFormat df = new SimpleDateFormat("EEE dd MMM yyyy à HH:mm:ss",
-                        Locale.FRANCE);
-                df.setTimeZone(TimeZone.getTimeZone("Europe/London")); // ?
-                tvDate.setText(df.format(date));
-
-                // Distance
-                TextView tvDist = (TextView) v.findViewById(R.id.iw_distance);
-                tvDist.setText("Distance: " + info[1] + " m");
-
-                // Altitude
-                TextView tvAlt = (TextView) v.findViewById(R.id.iw_altitude);
-                tvAlt.setText("Altitude: " + info[2] + " m");
-
-                // Latitude et longitude
-                TextView tvLoc = (TextView) v.findViewById(R.id.iw_location);
-                tvLoc.setText("Lat: " + info[3] + ", long: " + info[4]);
-
-                return v;
-            }
-        });
-
-        // Gérer le clic long sur la carte
-        map.setOnMapLongClickListener(MainActivity.this);
-
-
-        if (canAccessFineLocation = ActivityCompat.checkSelfPermission(this,
-                Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(this,
-                Manifest.permission.ACCESS_COARSE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            map.setMyLocationEnabled(true);
-        }
-
-        // Redessiner la trace KML
-        if (configurationHasChanged && kmlTrack.b != null) {
-            addPathToFragments(true, false);
-            configurationHasChanged = false;
-        }
-
-        // Redessiner la trace d'enregistrement
-        if (isConnectedToGeoLocService) {
-            if (locBinder.isRecording()) {
-                recordTrack.b = locBinder.getRecordData();
-                addPathToFragments(false, true);
-            }
-        }
-    }
-
-    /**
      * Une sous-trace a été sélectionnée.
      * <p/>
      * <p>Trace et sous-trace sont systématiquement mises à jour sur la carte bien
@@ -1275,59 +1092,262 @@ public class MainActivity extends Activity implements
      */
     @Override
     public void onGeoLocIntervalSeleted(int geoIdx1, int geoIdx2) {
+        Log.d(DEBUG_TAG, "onGeoLocIntervalSelected");
+
         MapFragment gmf = (MapFragment) getFragmentManager().findFragmentByTag(
                 FRAG_GMAP_TAG);
-        if (map != null) { // La carte Google existe
-            if (trackOnMapisKML) { // Trace KML
-                kmlTrack.iSubTrackStart = geoIdx1;
-                kmlTrack.iSubTrackEnd = geoIdx2;
-                if (geoIdx1 == -1) { // Effacer la sous-trace
-                    kmlTrack.iSubTrackStart = -1;
-                    drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path),
-                            map, kmlTrackStartImg, kmlTrackEndImg);
-                } else if (geoIdx2 == -1) { // Dessiner uniquement le marqueur de départ
-                    kmlTrack.iSubTrackEnd = kmlTrack.iSubTrackStart;
-                    drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path),
-                            map, kmlTrackStartImg, kmlTrackEndImg);
+        nextOperation = MapOperation.GEOLOC_INTERVAL_SELECTED;
+        geoLocIntervalle1 = geoIdx1;
+        geolocIntervalle2 = geoIdx2;
+        gmf.getMapAsync(this);
+    }
 
-                } else { // Dessiner la sous-trace
-                    drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path),
-                            map, kmlTrackStartImg, kmlTrackEndImg);
+    /**
+     * Afficher un type de carte particulier.
+     *
+     * @param val       Index associé avec ce type de carte
+     * @param googleMap carte à utiliser
+     */
+    private void setupMapType(int val, GoogleMap googleMap) {
+        Log.d(DEBUG_TAG, "setupMapType = " + val);
+        switch (val) {
+            case 0: // IGN
+                googleMap.setMapType(GoogleMap.MAP_TYPE_NONE);
+                if (ignOverlay != null) {
+                    ignOverlay.remove();
                 }
-            } else { // Trace d'enregistrement
-                recordTrack.iSubTrackStart = geoIdx1;
-                recordTrack.iSubTrackEnd = geoIdx2;
-                if (geoIdx1 == -1) { // Effacer la trace
-                    recordTrack.iSubTrackStart = -1;
-                    drawTrackOnMap(recordTrack,
-                            getResources().getColor(R.color.record_path), map,
-                            recTrackStartImg, recTrackEndImg);
-                } else if (geoIdx2 == -1) { // Uniquement le marqueur de départ
-                    recordTrack.iSubTrackEnd = recordTrack.iSubTrackStart;
-                    drawTrackOnMap(recordTrack,
-                            getResources().getColor(R.color.record_path), map,
-                            recTrackStartImg, recTrackEndImg);
-                } else { // Dessiner la sous-trace
-                    drawTrackOnMap(recordTrack,
-                            getResources().getColor(R.color.record_path), map,
-                            recTrackStartImg, recTrackEndImg);
-                }
-            }
+                ignOverlay = googleMap.addTileOverlay(new TileOverlayOptions()
+                        .tileProvider(new IGNTileProvider(getApplicationContext()))
+                        .fadeIn(true).zIndex(0.5f));
+                break;
+            case 1: // Normale
+                removeIGNOverlay();
+                googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
+                break;
+            case 2: // Hybride
+                removeIGNOverlay();
+                googleMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
+                break;
+            case 3: // Satellite
+                removeIGNOverlay();
+                googleMap.setMapType(GoogleMap.MAP_TYPE_SATELLITE);
+                break;
+            case 4: // Terrain
+                removeIGNOverlay();
+                googleMap.setMapType(GoogleMap.MAP_TYPE_TERRAIN);
+                break;
+            case 5: // Aucune
+                removeIGNOverlay();
+                googleMap.setMapType(GoogleMap.MAP_TYPE_NONE);
+                break;
         }
     }
 
     /**
-     * Méthode appelée lorsque la carte a été créée.
+     * La carte a été créée.
      *
      * @param googleMap
      */
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        map = googleMap;
+        Log.d(DEBUG_TAG, "** onMapReady : '" + nextOperation + "' **");
 
-        SharedPreferences settings = getPreferences(MODE_PRIVATE);
-        float latitude = settings.getFloat(LATITUDE_PREF_KEY, 45.145f);
-        float longitude = settings.getFloat(LONGITUDE_PREF_KEY, 5.72f);
-        moveCamera2Loc(latitude, longitude);
+        SharedPreferences prefs = PreferenceManager
+                .getDefaultSharedPreferences(MainActivity.this);
+        // Traiter l'opération correspondante
+        switch (nextOperation) {
+            case SETUP_MAP_ON_RESUME:
+                // Modifier si nécessaire le type de carte
+                setupMapType(prefs.getInt(MAPTYPE_PREF_KEY, 0), googleMap);
+
+                // Format des bulles d'information de position spécifiques
+                // sur une trace.
+                googleMap.setInfoWindowAdapter(new InfoWindowAdapter() {
+
+                    @Override
+                    public View getInfoWindow(Marker marker) {
+                        return null;
+                    }
+
+                    @Override
+                    public View getInfoContents(Marker marker) {
+                        View v = getLayoutInflater().inflate(R.layout.infowindow, null);
+
+                        TextView tvTitle = (TextView) v.findViewById(R.id.iw_title);
+                        tvTitle.setText(marker.getTitle());
+
+                        String info[] = marker.getSnippet().split("/");
+
+                        // Date
+                        TextView tvDate = (TextView) v.findViewById(R.id.iw_date);
+                        Date date = new Date(Long.parseLong(info[0]) * 1000);
+                        DateFormat df = new SimpleDateFormat("EEE dd MMM yyyy à HH:mm:ss",
+                                Locale.FRANCE);
+                        df.setTimeZone(TimeZone.getTimeZone("Europe/London")); // ?
+                        tvDate.setText(df.format(date));
+
+                        // Distance
+                        TextView tvDist = (TextView) v.findViewById(R.id.iw_distance);
+                        tvDist.setText("Distance: " + info[1] + " m");
+
+                        // Altitude
+                        TextView tvAlt = (TextView) v.findViewById(R.id.iw_altitude);
+                        tvAlt.setText("Altitude: " + info[2] + " m");
+
+                        // Latitude et longitude
+                        TextView tvLoc = (TextView) v.findViewById(R.id.iw_location);
+                        tvLoc.setText("Lat: " + info[3] + ", long: " + info[4]);
+
+                        return v;
+                    }
+                });
+
+                // Gérer le clic long sur la carte
+                googleMap.setOnMapLongClickListener(MainActivity.this);
+
+
+                if (canAccessFineLocation = ActivityCompat.checkSelfPermission(this,
+                        Manifest.permission.ACCESS_FINE_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED
+                        && ActivityCompat.checkSelfPermission(this,
+                        Manifest.permission.ACCESS_COARSE_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    googleMap.setMyLocationEnabled(true);
+                }
+
+                // Redessiner la trace KML
+                if (configurationHasChanged && kmlTrack.b != null) {
+                    addPathToFragments(true, false);
+                    configurationHasChanged = false;
+                }
+
+                // Redessiner la trace d'enregistrement
+                if (isConnectedToGeoLocService) {
+                    if (locBinder.isRecording()) {
+                        recordTrack.b = locBinder.getRecordData();
+                        addPathToFragments(false, true);
+                    }
+                }
+                break;
+            case SAVE_MAP_INSTANCE:
+                // Position de la caméra
+                if (googleMap != null) {
+                    CameraPosition pos = googleMap.getCameraPosition();
+                    //SharedPreferences settings = getPreferences(MODE_PRIVATE);
+                    SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+                    SharedPreferences.Editor editor = settings.edit();
+                    editor.putFloat(LATITUDE_PREF_KEY, (float) pos.target.latitude);
+                    editor.putFloat(LONGITUDE_PREF_KEY, (float) pos.target.longitude);
+                    editor.putFloat(BEARING_PREF_KEY, pos.bearing);
+                    editor.putFloat(TILT_PREF_KEY, pos.tilt);
+                    editor.putFloat(ZOOM_PREF_KEY, pos.zoom);
+                    editor.putInt(MAPTYPE_PREF_KEY, googleMap.getMapType());
+                    editor.apply(); // Appel asynchrone
+                }
+                break;
+            case ADD_PATH_TO_MAP:
+                Bundle b;
+                if (trackOnMapisKML) { // Trace KML
+                    drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path), googleMap,
+                            kmlTrackStartImg, kmlTrackEndImg);
+                    b = kmlTrack.b;
+                } else { // Trace d'enregistrement
+                    drawTrackOnMap(recordTrack, getResources().getColor(R.color.record_path),
+                            googleMap, recTrackStartImg, recTrackEndImg);
+                    b = recordTrack.b;
+                }
+
+                if (b != null && cameraWithAnimation) { // Animation de la caméra
+                    double latMin = b.getDouble(KMLReader.LATMIN_KEY);
+                    double latMax = b.getDouble(KMLReader.LATMAX_KEY);
+                    double longMin = b.getDouble(KMLReader.LONGMIN_KEY);
+                    double longMax = b.getDouble(KMLReader.LONGMAX_KEY);
+                    if (latMin == latMax && longMin == longMax) {
+                        // La trace ne contient qu'une position ou les positions
+                        // sont alignées (verticalement ou horizontalement)
+                        float zoom = Math.max(googleMap.getCameraPosition().zoom, 17);
+                        googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latMin,
+                                longMin), zoom));
+
+                    } else {
+                        // Déplacer la caméra pour visualiser la zone
+                        double deltaLat = latMax - latMin;
+                        double deltaLong = longMax - longMin;
+                        if (deltaLat * deltaLong == 0) {
+                            float zoom = Math.max(googleMap.getCameraPosition().zoom, 17);
+                            // 1 seule position ou
+                            // toutes les positions sont sur une même latitude ou longitude:
+                            // placer la position au centre tout en conservant le niveau de zoom
+                            googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latMin,
+                                    longMin), zoom));
+                        } else { // déplacer la caméra et modifier le niveau de zoom pour afficher
+                            // l'intégralité de la trace
+                            DisplayMetrics metrics = new DisplayMetrics();
+                            ((WindowManager) getSystemService(Context.WINDOW_SERVICE))
+                                    .getDefaultDisplay().getMetrics(metrics);
+                            int width = metrics.widthPixels;
+                            int height = metrics.heightPixels;
+
+                            googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(new LatLngBounds(
+                                            new LatLng(latMin, longMin), new LatLng(latMax, longMax)), width,
+                                    height * 3 / 4, 50));
+                        }
+
+
+                    }
+                }
+                break;
+            case SETUP_MAP_TYPE:
+                setupMapType(prefs.getInt(MAPTYPE_PREF_KEY, 0), googleMap);
+                break;
+            case GEOLOC_INTERVAL_SELECTED:
+                if (trackOnMapisKML) { // Trace KML
+                    kmlTrack.iSubTrackStart = geoLocIntervalle1;
+                    kmlTrack.iSubTrackEnd = geolocIntervalle2;
+                    if (geoLocIntervalle1 == -1) { // Effacer la sous-trace
+                        kmlTrack.iSubTrackStart = -1;
+                        drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path),
+                                googleMap, kmlTrackStartImg, kmlTrackEndImg);
+                    } else if (geolocIntervalle2 == -1) { // Dessiner uniquement le marqueur de départ
+                        kmlTrack.iSubTrackEnd = kmlTrack.iSubTrackStart;
+                        drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path),
+                                googleMap, kmlTrackStartImg, kmlTrackEndImg);
+
+                    } else { // Dessiner la sous-trace
+                        drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path),
+                                googleMap, kmlTrackStartImg, kmlTrackEndImg);
+                    }
+                } else { // Trace d'enregistrement
+                    recordTrack.iSubTrackStart = geoLocIntervalle1;
+                    recordTrack.iSubTrackEnd = geolocIntervalle2;
+                    if (geoLocIntervalle1 == -1) { // Effacer la trace
+                        recordTrack.iSubTrackStart = -1;
+                        drawTrackOnMap(recordTrack,
+                                getResources().getColor(R.color.record_path), googleMap,
+                                recTrackStartImg, recTrackEndImg);
+                    } else if (geolocIntervalle2 == -1) { // Uniquement le marqueur de départ
+                        recordTrack.iSubTrackEnd = recordTrack.iSubTrackStart;
+                        drawTrackOnMap(recordTrack,
+                                getResources().getColor(R.color.record_path), googleMap,
+                                recTrackStartImg, recTrackEndImg);
+                    } else { // Dessiner la sous-trace
+                        drawTrackOnMap(recordTrack,
+                                getResources().getColor(R.color.record_path), googleMap,
+                                recTrackStartImg, recTrackEndImg);
+                    }
+                }
+                break;
+            case MOVE_CAMERA_TO_LOC:
+                float zoom = Math.max(googleMap.getCameraPosition().zoom, 16);
+                googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(locToMoveTo.latitude,
+                        locToMoveTo.longitude), zoom));
+                break;
+            default:
+                Log.d(DEBUG_TAG, "*** Unknown OnMapReady " + nextOperation + "***");
+                break;
+        }
+
+        nextOperation = MapOperation.NONE; // opération traitée
     }
+
 }

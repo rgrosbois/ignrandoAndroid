@@ -45,7 +45,7 @@ public class FileListFragment extends ListFragment {
     /**
      * Pour sauvegarder le dernier dossier courant.
      */
-    private final static String CUR_DIR_KEY = "current_directory";
+    public final static String CUR_DIR_KEY = "current_directory";
 
     /**
      * Liste des fichiers et répertoires dans le dossier courant.

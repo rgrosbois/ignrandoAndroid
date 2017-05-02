@@ -57,6 +57,7 @@ public class IGNTileProvider implements TileProvider {
 
     // Clé de développement IGN pour le service WMTS
     private final String cleIGNWeb;
+    public static final String IGNKEY_KEY = "IGN_DEVELOPMENT_KEY";
     // Dimension d'une tuile
     public static final int TILE_PIXEL_DIM = 256;
     // Taille du tampon de lecture/écriture
@@ -103,7 +104,7 @@ public class IGNTileProvider implements TileProvider {
 
         // Récupérer la clé IGN
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
-        cleIGNWeb = settings.getString("IGN_DEVELOPMENT_KEY",
+        cleIGNWeb = settings.getString(IGNKEY_KEY,
                 "ry9bshqmzmv1gao9srw610oq"); // -> novembre 2017 ?
     }
 
