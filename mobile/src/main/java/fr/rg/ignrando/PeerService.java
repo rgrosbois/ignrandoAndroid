@@ -10,6 +10,7 @@ import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
@@ -140,12 +141,10 @@ public class PeerService extends Service {
                                         int len = (int) file.length();
                                         netOut.println("" + len);
                                         // Envoyer le fichier par tranche de 1024 octets
-                                        FileInputStream inFile = new FileInputStream(file);
-                                        byte[] buf = new byte[1024];
-                                        int readBytes;
-                                        while ((readBytes = inFile.read(buf)) != -1) {
-                                            netOutB.write(buf, 0, readBytes);
-                                        }
+                                        BufferedInputStream inFile = new BufferedInputStream(new FileInputStream(file));
+                                        byte[] buf = new byte[len];
+                                        inFile.read(buf, 0, len);
+                                        netOutB.write(buf, 0, len);
                                         netOutB.flush();
                                         inFile.close();
                                         Log.d(DEBUG_TAG, "Fichier transféré");
