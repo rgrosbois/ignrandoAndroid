@@ -140,7 +140,7 @@ public class PeerService extends Service {
                                         // Envoyer la longueur du fichier
                                         int len = (int) file.length();
                                         netOut.println("" + len);
-                                        // Envoyer le fichier par tranche de 1024 octets
+                                        // Envoyer le fichier
                                         BufferedInputStream inFile = new BufferedInputStream(new FileInputStream(file));
                                         byte[] buf = new byte[len];
                                         inFile.read(buf, 0, len);
