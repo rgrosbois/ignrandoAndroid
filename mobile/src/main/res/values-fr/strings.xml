@@ -32,7 +32,9 @@
     <string name="altimeter_correction">Compensation depuis l\'altitude réelle</string>
     <string name="altimeter_correction_desc">Indiquer l\'altitude réelle en mètres</string>
     <string name="settings">Paramètres</string>
+    <string name="info">info</string>
     <string name="ign_dvp_key_desc">Entrer une clé de developpement IGN valide</string>
     <string name="ign_dvp_key">Clé de développement IGN</string>
-
+    <string name="empty_text">---</string>
+    <string name="one_km_display_pref">Affichage de la zone des 1 km</string>
 </resources>

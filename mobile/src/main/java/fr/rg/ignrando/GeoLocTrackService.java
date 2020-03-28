@@ -42,15 +42,23 @@ import fr.rg.ignrando.util.KMLWriter;
 import fr.rg.ignrando.util.WMTS;
 
 /**
- * <p>Service permettant d'enregistrer et de chronométrer une trace GPS
+ * <p>Service permettant d'enregistrer et d'horodater une trace
  * grâce à l'écoute et la mémorisation des géolocalisations diffusées
  * par le GPS.</p>
  * <p>
- * <p>L'activité principale démarre ce service puis se connecte/déconnecte
- * en fonction de son cycle de vie.</p>
+ * <p>L'activité principale démarre ce service
+ * puis se connecte/déconnecte en fonction de son cycle de vie.</p>
  * <p>
- * <p>Les géolocalisations sont stockées dans un Bundle qui est ensuite diffusé
- * aux écouteurs (ici l'activité principale).</p>
+ * <p>Ce service est lancé à la fois:<ul>
+ * <li>en avant plan : pour continuer de s'exécuter même lorsque l'application
+ * n'est plus en premier plan ou qu'elle est redémarrée (ex: rotation d'écran).</li>
+ * <li>en tant service lié: pour permettre les interactions avec l'activité principale (démarrage ou
+ * arrêt des enregistrements, récupération des géolocalisations).</li>
+ * </ul>
+ * </p>
+ * <p>Chaque nouvelle géolocalisation reçue est stockée dans un Bundle et provoque la diffusion
+ * d'un message vers les écouteurs appropriés (ici l'activité principale pour mettre à jour
+ * l'affichage de la trace).</p>
  * <p>
  * <p>Afin de s'affranchir du temps de synchronisation du GPS, l'écoute
  * des géolocalisations peut être activée indépendamment de la mémorisation.</p>
@@ -78,7 +86,8 @@ public class GeoLocTrackService extends Service implements LocationListener {
      */
     private Paint paint;
 
-    private int updateNotificationId = 001;
+    private static final int UPDATE_NOTIFICATION_ID = 001;
+    private static final int FORGROUND_SERVICE_NOTIFICATION_ID = 002;
 
     /**
      * États possibles de l'enregistrement des localisations: démarré,
@@ -116,7 +125,7 @@ public class GeoLocTrackService extends Service implements LocationListener {
     private SavingTask periodicSavingTask;
 
     // Gestion de(s) client(s)
-    private final MyBinder mBinder = new MyBinder();
+    private final GeoLocServiceBinder mBinder = new GeoLocServiceBinder();
 
     // Récupération des tuiles IGN pour notifications
     private IGNTileProvider tileProvider;
@@ -160,6 +169,15 @@ public class GeoLocTrackService extends Service implements LocationListener {
                         }
                     }, pressureSensor, 1000000); // toutes les 1s
         }
+
+        // Service en avant plan
+        Notification notification = new NotificationCompat.Builder(this)
+                .setOngoing(true)
+                .setContentTitle("GPS Tracking")
+                .setContentText("Enregistrement en cours")
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setTicker("Enregistrement").build();
+        startForeground(FORGROUND_SERVICE_NOTIFICATION_ID, notification);
     }
 
     /**
@@ -182,7 +200,7 @@ public class GeoLocTrackService extends Service implements LocationListener {
      * premier plan).
      *
      * @param i
-     * @return Instance de MyBinder pour gérer l'association
+     * @return Instance de GeoLocServiceBinder pour gérer l'association
      */
     @Override
     public IBinder onBind(Intent i) {
@@ -226,6 +244,15 @@ public class GeoLocTrackService extends Service implements LocationListener {
         long duree = 1000 * 60 * 2;
         periodicSavingTask = new SavingTask();
         saveTimer.scheduleAtFixedRate(periodicSavingTask, duree, duree);
+
+        // Lancer le service en avant plan
+        Notification notification = new NotificationCompat.Builder(this)
+                .setOngoing(true)
+                .setContentTitle("GPS Tracking")
+                .setContentText("Enregistrement en cours")
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setTicker("Enregistrement").build();
+        startForeground(1, notification);
     }
 
     /**
@@ -238,6 +265,9 @@ public class GeoLocTrackService extends Service implements LocationListener {
         saveTimer.cancel();
         saveTimer.purge();
         recordBundle = null;
+
+        // Service en avant plan
+        stopForeground(true);
     }
 
     /**
@@ -284,7 +314,10 @@ public class GeoLocTrackService extends Service implements LocationListener {
         // Enlever les notifications
         NotificationManagerCompat notifManager = NotificationManagerCompat
                 .from(this);
-        notifManager.cancel(updateNotificationId);
+        notifManager.cancel(UPDATE_NOTIFICATION_ID);
+
+        // Service en avant plan
+        stopForeground(true);
     }
 
     /**
@@ -293,14 +326,14 @@ public class GeoLocTrackService extends Service implements LocationListener {
      * d'éliminer le temps de synchronisation du GPS.
      */
     public void startGeoLocationTracking() {
-        LocationManager locManager = (LocationManager) getSystemService
-                (Context.LOCATION_SERVICE);
+        LocationManager locManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (ActivityCompat.checkSelfPermission(this,
                 android.Manifest.permission.ACCESS_FINE_LOCATION) !=
                 PackageManager.PERMISSION_GRANTED
                 && ActivityCompat.checkSelfPermission(this,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION) !=
                 PackageManager.PERMISSION_GRANTED) {
+            // Permissions insuffisante
             return;
         }
         locManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
@@ -313,8 +346,7 @@ public class GeoLocTrackService extends Service implements LocationListener {
      * Arrêter la surveillance de la géolocalisation.
      */
     public void stopGeoLocationTracking() {
-        LocationManager locManager = (LocationManager) getSystemService
-                (Context.LOCATION_SERVICE);
+        LocationManager locManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         locManager.removeUpdates(this);
     }
 
@@ -536,7 +568,7 @@ public class GeoLocTrackService extends Service implements LocationListener {
                 NotificationManagerCompat.from(GeoLocTrackService.this);
 
         // Envoyer la notification
-        notificationManager.notify(updateNotificationId, notificationBuilder.build());
+        notificationManager.notify(UPDATE_NOTIFICATION_ID, notificationBuilder.build());
     }
 
     /**
@@ -777,9 +809,9 @@ public class GeoLocTrackService extends Service implements LocationListener {
     /**
      * Interface de connexion pour les clients
      */
-    public class MyBinder extends Binder {
+    public class GeoLocServiceBinder extends Binder {
         /**
-         * Accès aux méthodes publiques du Service.
+         * Pour accéder ensuite aux méthodes publiques du Service.
          *
          * @return instance du Service
          */

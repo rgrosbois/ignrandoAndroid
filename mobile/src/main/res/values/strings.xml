@@ -35,4 +35,5 @@
     <string name="ign_dvp_key_desc">Enter a valid IGN develoment key</string>
     <string name="ign_dvp_key">IGN development key</string>
     <string name="empty_text">---</string>
+    <string name="one_km_display_pref">One kilometer area display</string>
 </resources>

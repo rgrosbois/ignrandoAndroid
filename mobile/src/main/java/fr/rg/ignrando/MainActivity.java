@@ -45,6 +45,8 @@ import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
+import com.google.android.gms.maps.model.Circle;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
@@ -91,6 +93,7 @@ public class MainActivity extends Activity implements
     private static final String MAPTYPE_PREF_KEY = "saved_maptype";
     private static final String FULLSCREEN_PREF_KEY = "saved_fullscreen";
     private static final String SUBTITLE_KEY = "saved_subtitle";
+    private static final String ONE_KM_AREA_DISPLAY = "ONE_KM_AREA_DISPLAY";
 
     // Gestion des permissions
     public boolean canAccessFineLocation = false;
@@ -109,7 +112,7 @@ public class MainActivity extends Activity implements
     // Traces KML
     private Track kmlTrack = new Track();
     private Track recordTrack = new Track();
-    private boolean trackOnMapisKML = false;
+    private boolean trackOnMapIsKML = false;
     private boolean isFirstGeoLocation = false;
     private Bitmap kmlTrackStartImg, kmlTrackEndImg, recTrackStartImg,
             recTrackEndImg, interImg; // Images d'extrémités
@@ -119,46 +122,46 @@ public class MainActivity extends Activity implements
     private enum MapOperation {
         SETUP_MAP_ON_RESUME, SAVE_MAP_INSTANCE, ADD_PATH_TO_MAP, SETUP_MAP_TYPE,
         GEOLOC_INTERVAL_SELECTED, MOVE_CAMERA_TO_LOC, NONE
-    };
+    }
+
     MapOperation nextOperation = MapOperation.NONE;
+    MapOperation nextOperationBkp = MapOperation.NONE;
     boolean cameraWithAnimation = false;
     int geoLocIntervalle1, geolocIntervalle2;
     GeoLocation locToMoveTo;
 
     // Association au service de tracking de géolocalisations
-    private GeoLocTrackService.MyBinder locBinder = null;
-    private boolean isConnectedToGeoLocService = false;
+    private GeoLocTrackService.GeoLocServiceBinder locServiceBinder = null;
     private ServiceConnection mConnection = new ServiceConnection() {
 
         @Override
         public void onServiceConnected(ComponentName name, IBinder binder) {
-            locBinder = (GeoLocTrackService.MyBinder) binder;
-            isConnectedToGeoLocService = true;
+            locServiceBinder = (GeoLocTrackService.GeoLocServiceBinder) binder;
 
-            if (locBinder.isRecording()) { // Mettre à jour la trace d'enregistrement
-                recordTrack.b = locBinder.getRecordData();
+            if (locServiceBinder.isRecording()) { // Mettre à jour la trace d'enregistrement
+                recordTrack.b = locServiceBinder.getRecordData();
                 addPathToFragments(false, false);
             }
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            isConnectedToGeoLocService = false;
+            locServiceBinder = null;
         }
 
     };
 
     /**
-     * Écouter l'arrivée d'une nouvelle géolocalisation.
+     * Écouter l'arrivée de mises à jour depuis le service de géolocalisation.
      */
-    private BroadcastReceiver mUpdateReceiver = new BroadcastReceiver() {
+    private BroadcastReceiver mServiceUpdateReceiver = new BroadcastReceiver() {
 
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent.getAction().equals(GeoLocTrackService.PATH_UPDATED)) {
                 // Renvoyer toutes les données de la trace (à améliorer)
-                if (isConnectedToGeoLocService) {
-                    Bundle b = locBinder.getRecordData();
+                if (locServiceBinder != null) {
+                    Bundle b = locServiceBinder.getRecordData();
                     if (b != null) {
                         recordTrack.b = b;
                         // Mettre à jour la carte
@@ -194,7 +197,7 @@ public class MainActivity extends Activity implements
     }
 
     /**
-     * Création de l'activité
+     * (Re-)Création de l'activité. Définir le contenu et placer le fragment de carte.
      */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -202,7 +205,7 @@ public class MainActivity extends Activity implements
         Log.d(DEBUG_TAG, "onCreate");
 
         // Démarrage réseau de pairs
-        startService(new Intent(this, PeerService.class));
+        //startService(new Intent(this, PeerService.class));
 
         // Utilisation d'une barre de progression
         requestWindowFeature(Window.FEATURE_PROGRESS);
@@ -223,6 +226,7 @@ public class MainActivity extends Activity implements
             canAccessFineLocation = true;
         } else {
             canAccessFineLocation = false;
+            // Demander la permission correspondante
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     MY_PERMISSION_ACCESS_FINE_LOCATION);
         }
@@ -255,11 +259,11 @@ public class MainActivity extends Activity implements
                 .getDefaultDisplay().getMetrics(metrics);
         trackWidth *= metrics.density;
 
-        // Utilisation du bouton Home (pour sélectionner un fichier KML)
+        // Utilisation du bouton Home pour sélectionner un fichier KML
         ActionBar actionBar = getActionBar();
         actionBar.setDisplayHomeAsUpEnabled(true);
 
-        // Supprimer l'action bar en mode plein écran
+        // Supprimer l'action bar en mode immersion
         getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(
                 new OnSystemUiVisibilityChangeListener() {
 
@@ -285,24 +289,25 @@ public class MainActivity extends Activity implements
             getActionBar().setSubtitle(savedInstanceState.getString(SUBTITLE_KEY));
         }
 
-        // Démarrer le service de Géolocalisation (action nulle si déjà démarré)
-        startService(new Intent(this, GeoLocTrackService.class));
+        // Démarrer le service de Géolocalisation en avant plan (action nulle si déjà démarré)
+        startForegroundService(new Intent(this, GeoLocTrackService.class));
     }
 
     /**
-     * Se connecter au service d'enregistrement des géolocalisations.
+     * L'activité va (re-)devenir visible.
      */
     @Override
     protected void onStart() {
         super.onStart();
         Log.d(DEBUG_TAG, "onStart");
 
+        // Se connecter au service d'enregistrement des géolocalisations.
         bindService(new Intent(this, GeoLocTrackService.class), mConnection,
                 Context.BIND_AUTO_CREATE);
     }
 
     /**
-     * L'activité (re)passe au premier plan
+     * L'activité (re-)devient visible
      */
     @Override
     protected void onResume() {
@@ -313,14 +318,12 @@ public class MainActivity extends Activity implements
         MapFragment mapFragment = (MapFragment) getFragmentManager()
                 .findFragmentByTag(FRAG_GMAP_TAG);
         if (mapFragment != null) {
-            nextOperation = MapOperation.SETUP_MAP_ON_RESUME;
-            Log.d(DEBUG_TAG, ">>>> getMap setupMapOnResume");
+            setNextOperation(MapOperation.SETUP_MAP_ON_RESUME);
             mapFragment.getMapAsync(this);
         }
 
         // Surveiller les nouvelles géolocalisations
-        registerReceiver(mUpdateReceiver, new IntentFilter(
-                GeoLocTrackService.PATH_UPDATED));
+        registerReceiver(mServiceUpdateReceiver, new IntentFilter(GeoLocTrackService.PATH_UPDATED));
         isFirstGeoLocation = true;
     }
 
@@ -342,13 +345,13 @@ public class MainActivity extends Activity implements
         MapFragment mapFragment = (MapFragment) getFragmentManager()
                 .findFragmentByTag(FRAG_GMAP_TAG);
         if (mapFragment != null) {
-            nextOperation = MapOperation.SAVE_MAP_INSTANCE;
-            Log.d(DEBUG_TAG, ">>>> getMap saveMapInstance");
+            setNextOperation(MapOperation.SAVE_MAP_INSTANCE);
             mapFragment.getMapAsync(this);
         }
 
         // Mode immersion
-        boolean isFullScreen = (getWindow().getDecorView().getSystemUiVisibility() & View.SYSTEM_UI_FLAG_FULLSCREEN) != 0;
+        boolean isFullScreen = (getWindow().getDecorView().getSystemUiVisibility()
+                & View.SYSTEM_UI_FLAG_FULLSCREEN) != 0;
         outState.putBoolean(FULLSCREEN_PREF_KEY, isFullScreen);
 
         // Sous-titre de la barre d'action
@@ -367,7 +370,7 @@ public class MainActivity extends Activity implements
         Log.d(DEBUG_TAG, "onPause");
 
         // surveillance des géolocalisations
-        unregisterReceiver(mUpdateReceiver);
+        unregisterReceiver(mServiceUpdateReceiver);
     }
 
     /**
@@ -375,7 +378,6 @@ public class MainActivity extends Activity implements
      */
     @Override
     protected void onStop() {
-
         Log.d(DEBUG_TAG, "onStop");
 
         unbindService(mConnection);
@@ -396,7 +398,7 @@ public class MainActivity extends Activity implements
         // Sélectionner le type de carte en cours de visualisation
         SharedPreferences prefs = PreferenceManager
                 .getDefaultSharedPreferences(this);
-        int val = Integer.parseInt(prefs.getString("pref_maptype_choices", "0"));
+        int val = prefs.getInt(MAPTYPE_PREF_KEY, 0);
         switch (val) {
             case 0: // IGN
                 ((MenuItem) menu.findItem(R.id.ign_maptype)).setChecked(true);
@@ -459,16 +461,16 @@ public class MainActivity extends Activity implements
             case R.id.fullscreen: // Mode plein écran
                 hideUiDecoration();
                 break;
-            case R.id.info: // Afficher les informations de la trace
+            case R.id.info: // Afficher les informations de trace
                 if (getFragmentManager().findFragmentByTag(FRAG_PATHINFO_TAG) != null) {
                     // Fragment info déjà affiché -> revenir à la carte
                     getFragmentManager().popBackStack();
                 } else { // Créer et afficher le fragment d'information
                     ft = getFragmentManager().beginTransaction();
                     TrackInfoFragment pif;
-                    if (isConnectedToGeoLocService && locBinder.isRecording()) {
+                    if (locServiceBinder != null && locServiceBinder.isRecording()) {
                         // Enregistrement en cours, récupérer les données
-                        recordTrack.b = locBinder.getRecordData();
+                        recordTrack.b = locServiceBinder.getRecordData();
                         pif = TrackInfoFragment.newInstance(recordTrack.b);
                         pif.setSelectionIdx(recordTrack.iSubTrackStart,
                                 recordTrack.iSubTrackEnd);
@@ -597,17 +599,26 @@ public class MainActivity extends Activity implements
 
                 @Override
                 protected void onPostExecute(GeoLocation[] g) {
-                    if (g != null && g[0] != null) {
-                        if (g[0].address != null)
+                    if (g != null && g[0] != null) { // Une adresse valide a été trouvée
+                        if (g[0].address != null) // Modifier le sous-titre
                             getActionBar().setSubtitle(g[0].address);
 
                         // Centrer la carte sur la géolocalisation
-                        nextOperation = MapOperation.MOVE_CAMERA_TO_LOC;
+                        setNextOperation(MapOperation.MOVE_CAMERA_TO_LOC);
                         locToMoveTo = g[0];
 
                         // Remettre en icône l'action de la barre de recherche
                         if (searchItem != null)
                             searchItem.collapseActionView();
+
+                        // Afficher la carte au bon emplacement
+                        MapFragment gmf = (MapFragment) getFragmentManager().findFragmentByTag(
+                                FRAG_GMAP_TAG);
+                        if (gmf == null) { // Pas de fragment
+                            return;
+                        }
+                        gmf.getMapAsync(MainActivity.this);
+
                     }
                 }
             }.execute();
@@ -794,12 +805,16 @@ public class MainActivity extends Activity implements
         if (t.markInter != null) {
             t.markInter.remove();
         }
+        if (t.oneKmCirc != null) {
+            t.oneKmCirc.remove();
+        }
 
         // Pas de donnée -> Supprimer la trace
         if (t.b == null) {
             t.plTrack = null;
             t.markStart = null;
             t.markEnd = null;
+            t.oneKmCirc = null;
             return;
         }
 
@@ -811,68 +826,77 @@ public class MainActivity extends Activity implements
         }
 
         // ======== Trace ===========
-        PolylineOptions track = new PolylineOptions(); // Trace ou sous-trace
+        PolylineOptions trackOptions = new PolylineOptions(); // Trace ou sous-trace
         GeoLocation g;
         for (int i = 0; i <= ga.size() - 1; i++) {
-            g = (GeoLocation) ga.get(i);
-            track.add(new LatLng(g.latitude, g.longitude));
+            g = ga.get(i);
+            trackOptions.add(new LatLng(g.latitude, g.longitude));
         }
         // Marqueur de départ
-        g = (GeoLocation) ga.get(0);
-        // Log.d(DEBUG_TAG, "depImg=" + depImg + "(" + kmlTrackStartImg + "),arrImg="
-        // + arrImg);
+        g = ga.get(0);
         t.markStart = mMap.addMarker(new MarkerOptions()
                 .position(new LatLng(g.latitude, g.longitude))
                 .title("Départ")
-                .snippet(
-                        String.format("%d/%d/%d/%.6f/%.6f", g.timeStampS, g.length,
-                                (int) (g.barElevation == 0 ? g.gpsElevation : g.barElevation),
-                                g.latitude, g.longitude))
+                .snippet(String.format("%d/%d/%d/%.6f/%.6f", g.timeStampS, g.length,
+                        (int) (g.barElevation == 0 ? g.gpsElevation : g.barElevation),
+                        g.latitude, g.longitude))
                 .icon(BitmapDescriptorFactory.fromBitmap(depImg)));
+
+        // Cercle de 1km autour de la position de départ
+        SharedPreferences prefs = PreferenceManager
+                .getDefaultSharedPreferences(MainActivity.this);
+
+        if (prefs.getBoolean(ONE_KM_AREA_DISPLAY, false)) {
+            CircleOptions circleOptions = new CircleOptions()
+                    .center(new LatLng(g.latitude, g.longitude))
+                    .radius(1000)
+                    .strokeWidth(0)
+                    .zIndex(1.1f)
+                    .fillColor(Color.argb(128, 0, 255, 0)); // 1km
+            t.oneKmCirc = mMap.addCircle(circleOptions);
+        }
+
         // Marqueur d'arrivée
         if (ga.size() > 1) {
-            g = (GeoLocation) ga.get(ga.size() - 1);
+            g = ga.get(ga.size() - 1);
             t.markEnd = mMap.addMarker(new MarkerOptions()
                     .position(new LatLng(g.latitude, g.longitude))
                     .title("Arrivée")
-                    .snippet(
-                            String
-                                    .format("%d/%d/%d/%.6f/%.6f", g.timeStampS, g.length,
-                                            (int) (g.barElevation == 0 ? g.gpsElevation
-                                                    : g.barElevation), g.latitude, g.longitude))
+                    .snippet(String.format("%d/%d/%d/%.6f/%.6f", g.timeStampS, g.length,
+                            (int) (g.barElevation == 0 ? g.gpsElevation : g.barElevation),
+                            g.latitude, g.longitude))
                     .icon(BitmapDescriptorFactory.fromBitmap(arrImg)));
             // Sauvegarder la trace
-            track.color(color).width(trackWidth).zIndex(1f);
-            t.plTrack = mMap.addPolyline(track);
+            trackOptions.color(color).width(trackWidth).zIndex(1f);
+            t.plTrack = mMap.addPolyline(trackOptions);
         }
 
         // == Sous-Trace éventuelle ==
-        // Log.d(DEBUG_TAG, "sous trace="+t.iSubTrackStart+" à "+t.iSubTrackEnd);
         if (t.iSubTrackStart == -1 || t.iSubTrackEnd == -1)
             return; // pas de sélection
         if (t.iSubTrackEnd == t.iSubTrackStart) { // Une seule position
-            g = (GeoLocation) ga.get(t.iSubTrackStart);
+            g = ga.get(t.iSubTrackStart);
             t.markInter = mMap.addMarker(new MarkerOptions()
                     .position(new LatLng(g.latitude, g.longitude))
                     .title("Position intermédiaire")
-                    .snippet(
-                            String
-                                    .format("%d/%d/%d/%.6f/%.6f", g.timeStampS, g.length,
-                                            (int) (g.barElevation == 0 ? g.gpsElevation
-                                                    : g.barElevation), g.latitude, g.longitude))
+                    .snippet(String.format("%d/%d/%d/%.6f/%.6f", g.timeStampS, g.length,
+                            (int) (g.barElevation == 0 ? g.gpsElevation : g.barElevation),
+                            g.latitude, g.longitude))
                     .icon(BitmapDescriptorFactory.fromBitmap(interImg)));
             return;
         }
-        track = new PolylineOptions(); // sous-trace
+        trackOptions = new PolylineOptions(); // sous-trace
 
         // Positions successives
         for (int i = t.iSubTrackStart; i <= t.iSubTrackEnd; i++) {
-            g = (GeoLocation) ga.get(i);
-            track.add(new LatLng(g.latitude, g.longitude));
+            g = ga.get(i);
+            trackOptions.add(new LatLng(g.latitude, g.longitude));
         }
         // Sauvegarder la sous-trace
-        track.color(Color.argb(128, 255, 0, 0)).width(3 * trackWidth).zIndex(1f);
-        t.plSubTrack = mMap.addPolyline(track);
+        trackOptions.color(Color.argb(128, 255, 0, 0))
+                .width(3 * trackWidth)
+                .zIndex(1f);
+        t.plSubTrack = mMap.addPolyline(trackOptions);
     }
 
     /**
@@ -906,16 +930,15 @@ public class MainActivity extends Activity implements
         if (gmf == null) { // Pas de fragment
             return;
         }
-        nextOperation = MapOperation.ADD_PATH_TO_MAP;
-        trackOnMapisKML = isKML;
+        setNextOperation(MapOperation.ADD_PATH_TO_MAP);
+        trackOnMapIsKML = isKML;
         cameraWithAnimation = animateCamera;
-        Log.d(DEBUG_TAG, ">>>> getMap addPathToMap");
         gmf.getMapAsync(this);
 
     }
 
     /**
-     * Gérer le clic sur un nouveau type de carte.
+     * Choix d'un nouveau type de carte.
      *
      * @param item
      * @param mapTypeNum
@@ -934,14 +957,21 @@ public class MainActivity extends Activity implements
                     FRAG_GMAP_TAG);
             if (gmf != null) {
                 // Redessiner la carte
-                nextOperation = MapOperation.SETUP_MAP_TYPE;
-                Log.d(DEBUG_TAG, ">>>> getMap setupMapType " + mapTypeNum);
+                setNextOperation(MapOperation.SETUP_MAP_TYPE);
                 gmf.getMapAsync(this);
             }
 
 
             item.setChecked(true);
         }
+    }
+
+    private void setNextOperation(MapOperation type) {
+        if (nextOperation != MapOperation.NONE) {
+            nextOperationBkp = nextOperation;
+        }
+        Log.d(DEBUG_TAG, ">>>> getMap setupMapType " + type);
+        nextOperation = type;
     }
 
     /**
@@ -979,19 +1009,19 @@ public class MainActivity extends Activity implements
     }
 
     /**
-     * Gestion du clic long sur la carte
+     * Gestion du clic long sur la carte pour démarrer ou arrêter un enregistrement.
      */
     @Override
     public void onMapLongClick(LatLng point) {
         Log.d(DEBUG_TAG, "onMapLongClick");
 
-        if (isConnectedToGeoLocService) {
-            if (locBinder.isRecording()) { // Déjà en cours
+        if (locServiceBinder != null) {
+            if (locServiceBinder.isRecording()) { // Déjà en cours
                 RecordDialog.newInstance(true).show(getFragmentManager(),
                         "Enregistrement");
             } else { // Nouvel enregistrement
                 if (canAccessFineLocation) {
-                    locBinder.getService().startGeoLocationTracking();
+                    locServiceBinder.getService().startGeoLocationTracking();
                     RecordDialog.newInstance(false).show(getFragmentManager(),
                             "Enregistrement");
                 }
@@ -1005,8 +1035,8 @@ public class MainActivity extends Activity implements
     public void startRecord() {
         Log.d(DEBUG_TAG, "startRecord");
 
-        if (isConnectedToGeoLocService && canAccessFineLocation) {
-            GeoLocTrackService locService = locBinder.getService();
+        if (locServiceBinder != null && canAccessFineLocation) {
+            GeoLocTrackService locService = locServiceBinder.getService();
             if (locService != null) {
                 locService.startRecording();
                 updateSubtitle();
@@ -1020,8 +1050,8 @@ public class MainActivity extends Activity implements
     public void cancelRecord() {
         Log.d(DEBUG_TAG, "cancelRecord");
 
-        if (isConnectedToGeoLocService) {
-            GeoLocTrackService locService = locBinder.getService();
+        if (locServiceBinder != null) {
+            GeoLocTrackService locService = locServiceBinder.getService();
             if (locService != null) {
                 locService.cancelRecording();
                 locService.stopGeoLocationTracking();
@@ -1038,8 +1068,8 @@ public class MainActivity extends Activity implements
     public void stopRecord() {
         Log.d(DEBUG_TAG, "stopRecord");
 
-        if (isConnectedToGeoLocService) {
-            GeoLocTrackService locService = locBinder.getService();
+        if (locServiceBinder != null) {
+            GeoLocTrackService locService = locServiceBinder.getService();
             if (locService != null) {
                 locService.stopRecording();
                 locService.stopGeoLocationTracking();
@@ -1056,9 +1086,9 @@ public class MainActivity extends Activity implements
     private void updateSubtitle() {
         Log.d(DEBUG_TAG, "updateSubtitle");
 
-        if (isConnectedToGeoLocService && locBinder.isRecording()) {
+        if (locServiceBinder != null && locServiceBinder.isRecording()) {
             // Un enregistrement est en cours
-            Bundle b = locBinder.getRecordData();
+            Bundle b = locServiceBinder.getRecordData();
             if (b != null) {
                 ArrayList<GeoLocation> locList = b
                         .getParcelableArrayList(KMLReader.LOCATIONS_KEY);
@@ -1096,7 +1126,7 @@ public class MainActivity extends Activity implements
 
         MapFragment gmf = (MapFragment) getFragmentManager().findFragmentByTag(
                 FRAG_GMAP_TAG);
-        nextOperation = MapOperation.GEOLOC_INTERVAL_SELECTED;
+        setNextOperation(MapOperation.GEOLOC_INTERVAL_SELECTED);
         geoLocIntervalle1 = geoIdx1;
         geolocIntervalle2 = geoIdx2;
         gmf.getMapAsync(this);
@@ -1144,18 +1174,18 @@ public class MainActivity extends Activity implements
     }
 
     /**
-     * La carte a été créée.
+     * Effectuer une opération particulière sur la carte Google Map.
      *
-     * @param googleMap
+     * @param type      Type d'opération à effectuer.
+     * @param googleMap carte Google Map.
      */
-    @Override
-    public void onMapReady(GoogleMap googleMap) {
-        Log.d(DEBUG_TAG, "** onMapReady : '" + nextOperation + "' **");
+    void applyNextOperation(MapOperation type, GoogleMap googleMap) {
+        Log.d(DEBUG_TAG, "** onMapReady : '" + type + "' **");
 
         SharedPreferences prefs = PreferenceManager
                 .getDefaultSharedPreferences(MainActivity.this);
-        // Traiter l'opération correspondante
-        switch (nextOperation) {
+
+        switch (type) { // Traiter l'opération correspondante
             case SETUP_MAP_ON_RESUME:
                 // Modifier si nécessaire le type de carte
                 setupMapType(prefs.getInt(MAPTYPE_PREF_KEY, 0), googleMap);
@@ -1221,12 +1251,10 @@ public class MainActivity extends Activity implements
                     configurationHasChanged = false;
                 }
 
-                // Redessiner la trace d'enregistrement
-                if (isConnectedToGeoLocService) {
-                    if (locBinder.isRecording()) {
-                        recordTrack.b = locBinder.getRecordData();
-                        addPathToFragments(false, true);
-                    }
+                // Redessiner la trace d'enregistrement si nécessaire
+                if (locServiceBinder != null && locServiceBinder.isRecording()) {
+                    recordTrack.b = locServiceBinder.getRecordData();
+                    addPathToFragments(false, true);
                 }
                 break;
             case SAVE_MAP_INSTANCE:
@@ -1247,7 +1275,7 @@ public class MainActivity extends Activity implements
                 break;
             case ADD_PATH_TO_MAP:
                 Bundle b;
-                if (trackOnMapisKML) { // Trace KML
+                if (trackOnMapIsKML) { // Trace KML
                     drawTrackOnMap(kmlTrack, getResources().getColor(R.color.kml_path), googleMap,
                             kmlTrackStartImg, kmlTrackEndImg);
                     b = kmlTrack.b;
@@ -1301,7 +1329,7 @@ public class MainActivity extends Activity implements
                 setupMapType(prefs.getInt(MAPTYPE_PREF_KEY, 0), googleMap);
                 break;
             case GEOLOC_INTERVAL_SELECTED:
-                if (trackOnMapisKML) { // Trace KML
+                if (trackOnMapIsKML) { // Trace KML
                     kmlTrack.iSubTrackStart = geoLocIntervalle1;
                     kmlTrack.iSubTrackEnd = geolocIntervalle2;
                     if (geoLocIntervalle1 == -1) { // Effacer la sous-trace
@@ -1343,9 +1371,24 @@ public class MainActivity extends Activity implements
                         locToMoveTo.longitude), zoom));
                 break;
             default:
-                Log.d(DEBUG_TAG, "*** Unknown OnMapReady " + nextOperation + "***");
+                Log.d(DEBUG_TAG, "*** Unknown OnMapReady " + type + "***");
                 break;
         }
+
+    }
+
+    /**
+     * La carte a été créée.
+     *
+     * @param googleMap
+     */
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        if (nextOperationBkp != MapOperation.NONE) {
+            applyNextOperation(nextOperationBkp, googleMap);
+            nextOperationBkp = MapOperation.NONE;
+        }
+        applyNextOperation(nextOperation, googleMap);
 
         nextOperation = MapOperation.NONE; // opération traitée
     }

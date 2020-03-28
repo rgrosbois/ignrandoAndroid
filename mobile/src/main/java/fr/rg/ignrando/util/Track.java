@@ -2,6 +2,7 @@ package fr.rg.ignrando.util;
 
 import android.os.Bundle;
 
+import com.google.android.gms.maps.model.Circle;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.Polyline;
 
@@ -16,6 +17,7 @@ import com.google.android.gms.maps.model.Polyline;
 public class Track {
     public Bundle b; // Bundle de données
     public Polyline plTrack, plSubTrack; // Polyline pour trace et sous-trace
+    public Circle oneKmCirc;
 
     // Marqueurs de début, intermédiaire et fin de trace
     public Marker markStart, markInter, markEnd;

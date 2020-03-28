@@ -14,5 +14,9 @@
             android:key="ELEVATION_DISPLAY_TYPE"
             android:summary="@string/elevation_display_type_desc"
             android:title="@string/elevation_display_type" />
+    <CheckBoxPreference
+        android:defaultValue="false"
+        android:key="ONE_KM_AREA_DISPLAY"
+        android:title="@string/one_km_display_pref" />
 
 </PreferenceScreen>

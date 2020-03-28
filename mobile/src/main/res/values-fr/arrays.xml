@@ -29,6 +29,10 @@
         <item>GPS (grossier)</item>
         <item>Capteur de pression (précis)</item>
     </string-array>
+    <string-array name="elevation_source_list_values">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
     <string-array name="elevation_display_list">
         <item>Capteur</item>
         <item>Modèle 3D (nécessite une connexion)</item>
