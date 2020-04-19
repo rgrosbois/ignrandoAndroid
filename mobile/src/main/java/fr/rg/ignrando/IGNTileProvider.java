@@ -205,7 +205,7 @@ public class IGNTileProvider implements TileProvider {
             } else { // Télécharger les données
 //                Log.d(MainActivity.DEBUG_TAG, "Download r=" + r + ", c=" + c + ", " +
 //                        "z=" + ignScale);
-                URL url = new URL("https://gpp3-wxs.ign.fr/"
+                URL url = new URL("https://wxs.ign.fr/"
                         + cleIGNWeb
                         + "/wmts/?"
                         + "SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
@@ -760,7 +760,7 @@ public class IGNTileProvider implements TileProvider {
                 + "</GeocodeRequest>\n" + "</Request>\n" + "</XLS>\n";
         try {
             // Envoyer la requête
-            url = new URL("https://gpp3-wxs.ign.fr/" + cleIGN + "/geoportail/ols");
+            url = new URL("https://wxs.ign.fr/" + cleIGN + "/geoportail/ols");
             urlConnection = (HttpURLConnection) url.openConnection();
             urlConnection.setDoOutput(true); // pour poster
             urlConnection.setDoInput(true); // pour lire
