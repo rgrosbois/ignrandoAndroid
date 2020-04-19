@@ -45,7 +45,6 @@ import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
-import com.google.android.gms.maps.model.Circle;
 import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
@@ -642,7 +641,7 @@ public class MainActivity extends Activity implements
         new AsyncTask<Void, Void, Bundle>() {
             @Override
             protected Bundle doInBackground(Void... voids) {
-                return KMLReader.extractLocWithStAXCursor(fileName);
+                return KMLReader.extractLocWithStaxCursor(fileName);
             }
 
             @Override
