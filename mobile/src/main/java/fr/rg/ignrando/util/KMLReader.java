@@ -140,7 +140,7 @@ public class KMLReader {
      * @param fileName
      * @return
      */
-    public static Bundle extractLocWithStAXCursor(String fileName) {
+    public static Bundle extractLocWithStaxCursor(String fileName) {
         Bundle bundle = new Bundle();
 
         ArrayList<GeoLocation> list = new ArrayList<GeoLocation>(); // Stockage du
@@ -398,7 +398,7 @@ public class KMLReader {
         double ha = RAYON_TERRE + g.dispElevation;
         double hb = RAYON_TERRE + lastLocation.dispElevation;
         double dist = ha * ha + hb * hb - 2 * ha * hb
-                * (cos(la) * cos(lb) + cos(da - db) * sin(la) * sin(lb));
+                * (cos(la) * cos(lb) * cos(da - db) + sin(la) * sin(lb));
         if (dist < 0) { // Cas où les calculs approximatifs empêchent de trouver 0
             return 0;
         } else {
